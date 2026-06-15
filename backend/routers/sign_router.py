@@ -97,8 +97,22 @@ def update_sign(
         raise HTTPException(status_code=404, detail="引导牌不存在")
     
     update_data = sign_data.model_dump(exclude_unset=True)
+    
+    old_area = sign.current_area
+    new_area = update_data.get("current_area")
+    
     for key, value in update_data.items():
         setattr(sign, key, value)
+    
+    if new_area is not None and old_area != new_area:
+        position_record = PositionRecord(
+            sign_id=sign.id,
+            from_area=old_area,
+            to_area=new_area,
+            operator=current_user.full_name or current_user.username,
+            reason="编辑修改摆放区域"
+        )
+        db.add(position_record)
     
     db.commit()
     db.refresh(sign)

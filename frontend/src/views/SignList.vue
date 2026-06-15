@@ -51,13 +51,21 @@
           </template>
         </el-table-column>
         <el-table-column prop="remark" label="备注" min-width="150" show-overflow-tooltip />
-        <el-table-column label="操作" width="240" fixed="right">
+        <el-table-column label="操作" width="360" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="openDetailDialog(row)">详情</el-button>
             <el-button link type="primary" @click="openAdjustDialog(row)" :disabled="['deactivated'].includes(row.status)">
               位置调整
             </el-button>
             <el-button link type="primary" @click="openEditDialog(row)">编辑</el-button>
+            <el-button
+              v-if="row.status === 'pending_production'"
+              link
+              type="success"
+              @click="handleMarkAvailable(row)"
+            >
+              标记可发放
+            </el-button>
             <el-popconfirm title="确定删除此引导牌？" @confirm="handleDelete(row)">
               <template #reference>
                 <el-button link type="danger">删除</el-button>
@@ -396,6 +404,16 @@ async function handleDelete(row) {
   try {
     await request.delete(`/signs/${row.id}`)
     ElMessage.success('删除成功')
+    fetchList()
+  } catch (e) {
+    if (e?.message) ElMessage.error(e.message)
+  }
+}
+
+async function handleMarkAvailable(row) {
+  try {
+    await request.post(`/signs/${row.id}/status/available`)
+    ElMessage.success('已标记为可发放')
     fetchList()
   } catch (e) {
     if (e?.message) ElMessage.error(e.message)

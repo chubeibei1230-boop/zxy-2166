@@ -95,6 +95,7 @@ class GuideSignCreate(GuideSignBase):
 
 
 class GuideSignUpdate(BaseModel):
+    batch_code: Optional[str] = None
     applicable_session: Optional[str] = None
     current_area: Optional[str] = None
     responsible_person: Optional[str] = None

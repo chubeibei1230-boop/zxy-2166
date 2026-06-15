@@ -27,12 +27,16 @@ def get_overview_stats(
     deactivated = db.query(GuideSign).filter(GuideSign.status == "deactivated").count()
     
     session_usage_query = db.query(
-        GuideSign.applicable_session,
-        func.count(GuideSign.id).label('count')
-    ).group_by(GuideSign.applicable_session).order_by(func.count(GuideSign.id).desc()).limit(10).all()
+        IssueRecord.session,
+        func.count(IssueRecord.id).label('count')
+    ).filter(
+        IssueRecord.issue_type == 'issue',
+        IssueRecord.session.isnot(None),
+        IssueRecord.session != ''
+    ).group_by(IssueRecord.session).order_by(func.count(IssueRecord.id).desc()).limit(10).all()
     
     session_usage = [
-        SessionUsageItem(session=row.applicable_session, count=row.count)
+        SessionUsageItem(session=row.session, count=row.count)
         for row in session_usage_query
     ]
     
