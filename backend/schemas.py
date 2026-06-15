@@ -154,6 +154,75 @@ class PersonWorkloadItem(BaseModel):
     count: int
 
 
+class AnomalyFlowRecordBase(BaseModel):
+    action: str
+    operator: str
+    remark: str = ""
+    from_status: Optional[str] = None
+    to_status: Optional[str] = None
+
+
+class AnomalyFlowRecordResponse(AnomalyFlowRecordBase):
+    id: int
+    anomaly_id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AnomalyBase(BaseModel):
+    sign_id: int
+    anomaly_type: str
+    anomaly_level: str = "normal"
+    session: Optional[str] = None
+    reporter: str
+    responsible_person: str
+    description: str = ""
+
+
+class AnomalyCreate(AnomalyBase):
+    pass
+
+
+class AnomalyUpdate(BaseModel):
+    anomaly_type: Optional[str] = None
+    anomaly_level: Optional[str] = None
+    session: Optional[str] = None
+    responsible_person: Optional[str] = None
+    description: Optional[str] = None
+
+
+class AnomalyProcessRequest(BaseModel):
+    operator: str
+    remark: str = ""
+    action: str
+
+
+class AnomalyResponse(AnomalyBase):
+    id: int
+    current_status: str
+    final_result: str = ""
+    closed_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    guide_sign: Optional[GuideSignResponse] = None
+    flow_records: List[AnomalyFlowRecordResponse] = []
+
+    class Config:
+        from_attributes = True
+
+
+class AnomalyStatsItem(BaseModel):
+    status: str
+    count: int
+
+
+class AnomalyTypeStatsItem(BaseModel):
+    anomaly_type: str
+    count: int
+
+
 class OverviewStats(BaseModel):
     total_signs: int
     pending_production: int
@@ -167,3 +236,9 @@ class OverviewStats(BaseModel):
     area_conflicts: List[AreaConflictItem]
     person_workload: List[PersonWorkloadItem]
     pending_review_list: List[GuideSignResponse]
+    total_anomalies: int
+    pending_anomalies: int
+    processing_anomalies: int
+    pending_confirm_anomalies: int
+    closed_anomalies: int
+    recent_anomalies: List[AnomalyResponse]

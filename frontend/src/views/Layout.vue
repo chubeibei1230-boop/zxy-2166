@@ -56,7 +56,7 @@ import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { 
-  Tickets, DataAnalysis, Promotion, Refresh, DocumentChecked,
+  Tickets, DataAnalysis, Promotion, Refresh, DocumentChecked, Warning,
   User, ArrowDown, SwitchButton
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
@@ -70,7 +70,8 @@ const menuItems = [
   { path: '/signs', title: '引导牌列表', icon: 'Tickets' },
   { path: '/issue', title: '发放管理', icon: 'Promotion' },
   { path: '/recycle', title: '回收管理', icon: 'Refresh' },
-  { path: '/review', title: '复核管理', icon: 'DocumentChecked' }
+  { path: '/review', title: '复核管理', icon: 'DocumentChecked' },
+  { path: '/anomaly', title: '异常管理', icon: 'Warning' }
 ]
 
 const activeMenu = computed(() => route.path)

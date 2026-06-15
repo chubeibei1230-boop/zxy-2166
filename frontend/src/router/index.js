@@ -43,6 +43,12 @@ const routes = [
         name: 'Review',
         component: () => import('@/views/Review.vue'),
         meta: { title: '复核管理', icon: 'DocumentChecked' }
+      },
+      {
+        path: 'anomaly',
+        name: 'Anomaly',
+        component: () => import('@/views/Anomaly.vue'),
+        meta: { title: '异常管理', icon: 'Warning' }
       }
     ]
   }

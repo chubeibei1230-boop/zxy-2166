@@ -32,6 +32,7 @@ class GuideSign(Base):
     position_records = relationship("PositionRecord", back_populates="guide_sign", cascade="all, delete-orphan")
     issue_records = relationship("IssueRecord", back_populates="guide_sign", cascade="all, delete-orphan")
     review_records = relationship("ReviewRecord", back_populates="guide_sign", cascade="all, delete-orphan")
+    anomalies = relationship("Anomaly", back_populates="guide_sign", cascade="all, delete-orphan")
 
 
 class PositionRecord(Base):
@@ -74,3 +75,39 @@ class ReviewRecord(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     guide_sign = relationship("GuideSign", back_populates="review_records")
+
+
+class Anomaly(Base):
+    __tablename__ = "anomalies"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sign_id = Column(Integer, ForeignKey("guide_signs.id"), nullable=False)
+    anomaly_type = Column(String(30), nullable=False, index=True)
+    anomaly_level = Column(String(20), default="normal")
+    session = Column(String(100))
+    current_status = Column(String(20), default="pending", index=True)
+    reporter = Column(String(100), nullable=False)
+    responsible_person = Column(String(100), nullable=False)
+    description = Column(Text, default="")
+    final_result = Column(Text, default="")
+    closed_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    guide_sign = relationship("GuideSign", back_populates="anomalies")
+    flow_records = relationship("AnomalyFlowRecord", back_populates="anomaly", cascade="all, delete-orphan")
+
+
+class AnomalyFlowRecord(Base):
+    __tablename__ = "anomaly_flow_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    anomaly_id = Column(Integer, ForeignKey("anomalies.id"), nullable=False)
+    action = Column(String(30), nullable=False)
+    operator = Column(String(100), nullable=False)
+    remark = Column(Text, default="")
+    from_status = Column(String(20))
+    to_status = Column(String(20))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    anomaly = relationship("Anomaly", back_populates="flow_records")

@@ -59,7 +59,7 @@
       <el-col :span="3">
         <div class="stat-card review">
           <div class="stat-icon">
-            <el-icon :size="28"><Warning /></el-icon>
+            <el-icon :size="28"><DocumentChecked /></el-icon>
           </div>
           <div class="stat-info">
             <div class="stat-label">待复核</div>
@@ -79,13 +79,60 @@
         </div>
       </el-col>
       <el-col :span="3">
-        <div class="stat-card deactivated">
+        <div class="stat-card anomaly" @click="goToAnomaly" style="cursor: pointer">
           <div class="stat-icon">
-            <el-icon :size="28"><Close /></el-icon>
+            <el-icon :size="28"><Warning /></el-icon>
           </div>
           <div class="stat-info">
-            <div class="stat-label">已停用</div>
-            <div class="stat-value">{{ stats.deactivated || 0 }}</div>
+            <div class="stat-label">异常总数</div>
+            <div class="stat-value">{{ stats.total_anomalies || 0 }}</div>
+          </div>
+        </div>
+      </el-col>
+    </el-row>
+
+    <el-row :gutter="16" class="stats-row anomaly-stats">
+      <el-col :span="6">
+        <div class="stat-card anomaly-pending" @click="goToAnomaly('pending')" style="cursor: pointer">
+          <div class="stat-icon">
+            <el-icon :size="24"><Clock /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-label">待处理异常</div>
+            <div class="stat-value">{{ stats.pending_anomalies || 0 }}</div>
+          </div>
+        </div>
+      </el-col>
+      <el-col :span="6">
+        <div class="stat-card anomaly-processing" @click="goToAnomaly('processing')" style="cursor: pointer">
+          <div class="stat-icon">
+            <el-icon :size="24"><Loading /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-label">处理中</div>
+            <div class="stat-value">{{ stats.processing_anomalies || 0 }}</div>
+          </div>
+        </div>
+      </el-col>
+      <el-col :span="6">
+        <div class="stat-card anomaly-confirm" @click="goToAnomaly('pending_confirm')" style="cursor: pointer">
+          <div class="stat-icon">
+            <el-icon :size="24"><QuestionFilled /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-label">待确认</div>
+            <div class="stat-value">{{ stats.pending_confirm_anomalies || 0 }}</div>
+          </div>
+        </div>
+      </el-col>
+      <el-col :span="6">
+        <div class="stat-card anomaly-closed" @click="goToAnomaly('closed')" style="cursor: pointer">
+          <div class="stat-icon">
+            <el-icon :size="24"><CircleCheck /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-label">已关闭</div>
+            <div class="stat-value">{{ stats.closed_anomalies || 0 }}</div>
           </div>
         </div>
       </el-col>
@@ -149,6 +196,62 @@
         </el-card>
       </el-col>
     </el-row>
+
+    <el-row :gutter="16" class="charts-row">
+      <el-col :span="24">
+        <el-card class="chart-card">
+          <template #header>
+            <div class="card-title">
+              <span>近期异常记录</span>
+              <el-button link type="primary" size="small" @click="goToAnomaly">查看全部</el-button>
+            </div>
+          </template>
+          <div class="anomaly-list">
+            <el-table :data="stats.recent_anomalies || []" size="small" v-loading="loading">
+              <el-table-column prop="id" label="异常编号" width="90" />
+              <el-table-column label="引导牌" width="140">
+                <template #default="{ row }">
+                  {{ row.guide_sign?.sign_number || '-' }}
+                </template>
+              </el-table-column>
+              <el-table-column label="异常类型" width="100">
+                <template #default="{ row }">
+                  <el-tag :type="getAnomalyTypeType(row.anomaly_type)" size="small">
+                    {{ getAnomalyTypeLabel(row.anomaly_type) }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="等级" width="80">
+                <template #default="{ row }">
+                  <el-tag :type="getAnomalyLevelType(row.anomaly_level)" size="small">
+                    {{ getAnomalyLevelLabel(row.anomaly_level) }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="状态" width="90">
+                <template #default="{ row }">
+                  <el-tag :type="getAnomalyStatusType(row.current_status)" size="small">
+                    {{ getAnomalyStatusLabel(row.current_status) }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="responsible_person" label="责任人" width="100" />
+              <el-table-column prop="description" label="异常描述" min-width="150" show-overflow-tooltip />
+              <el-table-column prop="created_at" label="登记时间" width="160">
+                <template #default="{ row }">
+                  {{ formatDate(row.created_at) }}
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="100" fixed="right">
+                <template #default="{ row }">
+                  <el-button link type="primary" size="small" @click="goToAnomalyDetail(row)">查看</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
   </div>
 </template>
 
@@ -157,9 +260,15 @@ import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 import { 
-  Tickets, Clock, CircleCheck, Promotion, Refresh, Warning, Close 
+  Tickets, Clock, CircleCheck, Promotion, Refresh, Warning, Close,
+  Loading, QuestionFilled, DocumentChecked
 } from '@element-plus/icons-vue'
 import request from '@/utils/request'
+import {
+  getAnomalyStatusLabel, getAnomalyStatusType,
+  getAnomalyTypeLabel, getAnomalyTypeType,
+  getAnomalyLevelLabel, getAnomalyLevelType
+} from '@/utils/statusMap'
 
 const router = useRouter()
 const loading = ref(false)
@@ -172,6 +281,18 @@ const personChartRef = ref(null)
 let sessionChart = null
 let areaChart = null
 let personChart = null
+
+function formatDate(dateStr) {
+  if (!dateStr) return '-'
+  const date = new Date(dateStr)
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
 
 async function fetchData() {
   loading.value = true
@@ -354,6 +475,18 @@ function goToReview() {
   router.push('/review')
 }
 
+function goToAnomaly(status) {
+  if (status) {
+    router.push({ path: '/anomaly', query: { current_status: status } })
+  } else {
+    router.push('/anomaly')
+  }
+}
+
+function goToAnomalyDetail(row) {
+  router.push('/anomaly')
+}
+
 function handleResize() {
   sessionChart?.resize()
   areaChart?.resize()
@@ -437,6 +570,36 @@ onBeforeUnmount(() => {
   background: linear-gradient(135deg, #bdc3c7, #2c3e50);
 }
 
+.stat-card.anomaly .stat-icon {
+  background: linear-gradient(135deg, #ff6b6b, #ee5a52);
+}
+
+.anomaly-stats .stat-icon {
+  width: 44px;
+  height: 44px;
+}
+
+.anomaly-stats .stat-value {
+  font-size: 20px;
+}
+
+.stat-card.anomaly-pending .stat-icon {
+  background: linear-gradient(135deg, #ff9a56, #ff6b35);
+}
+
+.stat-card.anomaly-processing .stat-icon {
+  background: linear-gradient(135deg, #4facfe, #00f2fe);
+}
+
+.stat-card.anomaly-confirm .stat-icon {
+  background: linear-gradient(135deg, #f093fb, #f5576c);
+}
+
+.stat-card.anomaly-closed .stat-icon {
+  background: linear-gradient(135deg, #43e97b, #38f9d7);
+  color: white;
+}
+
 .stat-info {
   flex: 1;
 }
@@ -474,6 +637,11 @@ onBeforeUnmount(() => {
 }
 
 .pending-review-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.anomaly-list {
   max-height: 300px;
   overflow-y: auto;
 }

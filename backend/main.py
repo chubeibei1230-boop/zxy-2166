@@ -7,6 +7,7 @@ from auth import init_default_user
 from routers.auth_router import router as auth_router
 from routers.sign_router import router as sign_router
 from routers.stats_router import router as stats_router
+from routers.anomaly_router import router as anomaly_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -23,6 +24,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(sign_router)
 app.include_router(stats_router)
+app.include_router(anomaly_router)
 
 
 @app.on_event("startup")

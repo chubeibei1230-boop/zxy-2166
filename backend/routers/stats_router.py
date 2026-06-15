@@ -4,7 +4,7 @@ from sqlalchemy import func
 from typing import List
 
 from database import get_db
-from models import GuideSign, PositionRecord, IssueRecord, User
+from models import GuideSign, PositionRecord, IssueRecord, User, Anomaly
 from auth import get_current_user
 from schemas import OverviewStats, SessionUsageItem, AreaConflictItem, PersonWorkloadItem
 
@@ -64,6 +64,16 @@ def get_overview_stats(
         GuideSign.status == "pending_review"
     ).order_by(GuideSign.updated_at.desc()).all()
     
+    total_anomalies = db.query(Anomaly).count()
+    pending_anomalies = db.query(Anomaly).filter(Anomaly.current_status == "pending").count()
+    processing_anomalies = db.query(Anomaly).filter(Anomaly.current_status == "processing").count()
+    pending_confirm_anomalies = db.query(Anomaly).filter(Anomaly.current_status == "pending_confirm").count()
+    closed_anomalies = db.query(Anomaly).filter(Anomaly.current_status == "closed").count()
+    
+    recent_anomalies = db.query(Anomaly).filter(
+        Anomaly.current_status != "closed"
+    ).order_by(Anomaly.created_at.desc()).limit(5).all()
+    
     return OverviewStats(
         total_signs=total_signs,
         pending_production=pending_production,
@@ -76,5 +86,11 @@ def get_overview_stats(
         session_usage=session_usage,
         area_conflicts=area_conflicts,
         person_workload=person_workload,
-        pending_review_list=pending_review_list
+        pending_review_list=pending_review_list,
+        total_anomalies=total_anomalies,
+        pending_anomalies=pending_anomalies,
+        processing_anomalies=processing_anomalies,
+        pending_confirm_anomalies=pending_confirm_anomalies,
+        closed_anomalies=closed_anomalies,
+        recent_anomalies=recent_anomalies
     )
