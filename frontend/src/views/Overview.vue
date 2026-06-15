@@ -484,7 +484,7 @@ function goToAnomaly(status) {
 }
 
 function goToAnomalyDetail(row) {
-  router.push('/anomaly')
+  router.push({ path: '/anomaly', query: { anomaly_id: row.id } })
 }
 
 function handleResize() {

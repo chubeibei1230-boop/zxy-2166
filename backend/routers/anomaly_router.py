@@ -100,6 +100,9 @@ def create_anomaly(
     anomaly = Anomaly(**anomaly_data.model_dump())
     anomaly.current_status = "pending"
     
+    if not anomaly.session and sign.applicable_session:
+        anomaly.session = sign.applicable_session
+    
     flow_record = AnomalyFlowRecord(
         action="register",
         operator=anomaly_data.reporter,
@@ -108,6 +111,18 @@ def create_anomaly(
         to_status="pending"
     )
     anomaly.flow_records.append(flow_record)
+    
+    sign._original_status = sign.status
+    if anomaly_data.anomaly_type == "lost":
+        sign.status = "deactivated"
+        flow_record.remark += "；引导牌状态已联动变更为停用"
+    elif anomaly_data.anomaly_type == "damaged":
+        sign.status = "pending_review"
+        flow_record.remark += "；引导牌状态已联动变更为待复核"
+    elif anomaly_data.anomaly_type == "overdue":
+        if sign.status not in ["pending_review", "deactivated"]:
+            sign.status = "pending_recycle"
+            flow_record.remark += "；引导牌状态已联动变更为待回收"
     
     db.add(anomaly)
     db.commit()
@@ -147,41 +162,72 @@ def process_anomaly(
     anomaly = db.query(Anomaly).filter(Anomaly.id == anomaly_id).first()
     if not anomaly:
         raise HTTPException(status_code=404, detail="异常记录不存在")
-    if anomaly.current_status == "closed":
-        raise HTTPException(status_code=400, detail="已关闭的异常不能处理")
     
     action = request.action
     from_status = anomaly.current_status
     to_status = None
+    sign = db.query(GuideSign).filter(GuideSign.id == anomaly.sign_id).first()
     
-    if action == "start_process":
-        if from_status not in ["pending", "pending_confirm"]:
-            raise HTTPException(status_code=400, detail="当前状态不能开始处理")
-        to_status = "processing"
-    elif action == "submit_confirm":
-        if from_status != "processing":
-            raise HTTPException(status_code=400, detail="只有处理中状态才能提交确认")
-        to_status = "pending_confirm"
-    elif action == "confirm_close":
-        if from_status != "pending_confirm":
-            raise HTTPException(status_code=400, detail="只有待确认状态才能关闭")
-        to_status = "closed"
-        anomaly.closed_at = datetime.now()
-        anomaly.final_result = request.remark
-    elif action == "reject":
-        if from_status != "pending_confirm":
-            raise HTTPException(status_code=400, detail="只有待确认状态才能驳回")
-        to_status = "processing"
-    elif action == "reopen":
+    if action == "reopen":
         if from_status != "closed":
             raise HTTPException(status_code=400, detail="只有已关闭状态才能重新打开")
         to_status = "processing"
         anomaly.closed_at = None
         anomaly.final_result = ""
-    elif action == "add_remark":
-        to_status = from_status
+        if sign:
+            if anomaly.anomaly_type == "lost":
+                if sign.status == "deactivated":
+                    sign.status = "available"
+            elif anomaly.anomaly_type == "damaged":
+                if sign.status == "deactivated":
+                    sign.status = "available"
     else:
-        raise HTTPException(status_code=400, detail="无效的操作类型")
+        if anomaly.current_status == "closed":
+            raise HTTPException(status_code=400, detail="已关闭的异常不能处理，请选择重新打开")
+        
+        if action == "start_process":
+            if from_status not in ["pending", "pending_confirm"]:
+                raise HTTPException(status_code=400, detail="当前状态不能开始处理")
+            to_status = "processing"
+        elif action == "submit_confirm":
+            if from_status != "processing":
+                raise HTTPException(status_code=400, detail="只有处理中状态才能提交确认")
+            to_status = "pending_confirm"
+        elif action == "confirm_close":
+            if from_status != "pending_confirm":
+                raise HTTPException(status_code=400, detail="只有待确认状态才能关闭")
+            to_status = "closed"
+            anomaly.closed_at = datetime.now()
+            anomaly.final_result = request.remark
+            if sign:
+                other_active = db.query(Anomaly).filter(
+                    Anomaly.sign_id == sign.id,
+                    Anomaly.id != anomaly.id,
+                    Anomaly.current_status.in_(["pending", "processing", "pending_confirm"])
+                ).count()
+                if other_active == 0:
+                    if anomaly.anomaly_type == "lost":
+                        pass
+                    elif anomaly.anomaly_type == "damaged":
+                        if sign.status == "pending_review":
+                            sign.status = "available"
+                    elif anomaly.anomaly_type == "overdue":
+                        if sign.status == "pending_recycle":
+                            sign.status = "available"
+                    elif anomaly.anomaly_type == "wrong_issue":
+                        if sign.status not in ["deactivated", "pending_review"]:
+                            sign.status = "available"
+                    else:
+                        if sign.status not in ["deactivated"]:
+                            sign.status = "available"
+        elif action == "reject":
+            if from_status != "pending_confirm":
+                raise HTTPException(status_code=400, detail="只有待确认状态才能驳回")
+            to_status = "processing"
+        elif action == "add_remark":
+            to_status = from_status
+        else:
+            raise HTTPException(status_code=400, detail="无效的操作类型")
     
     if to_status and to_status != from_status:
         anomaly.current_status = to_status
@@ -230,3 +276,34 @@ def delete_anomaly(
     db.delete(anomaly)
     db.commit()
     return {"message": "删除成功"}
+
+
+@router.get("/stats/summary")
+def get_anomaly_stats_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    total = db.query(Anomaly).count()
+    pending = db.query(Anomaly).filter(Anomaly.current_status == "pending").count()
+    processing = db.query(Anomaly).filter(Anomaly.current_status == "processing").count()
+    pending_confirm = db.query(Anomaly).filter(Anomaly.current_status == "pending_confirm").count()
+    closed = db.query(Anomaly).filter(Anomaly.current_status == "closed").count()
+    
+    type_stats = db.query(
+        Anomaly.anomaly_type,
+        func.count(Anomaly.id).label("count")
+    ).filter(
+        Anomaly.current_status.in_(["pending", "processing", "pending_confirm"])
+    ).group_by(Anomaly.anomaly_type).all()
+    
+    return {
+        "total": total,
+        "pending": pending,
+        "processing": processing,
+        "pending_confirm": pending_confirm,
+        "closed": closed,
+        "total_active": pending + processing + pending_confirm,
+        "type_stats": [
+            {"anomaly_type": t, "count": c} for t, c in type_stats
+        ]
+    }

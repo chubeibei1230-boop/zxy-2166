@@ -109,6 +109,9 @@ class GuideSignResponse(GuideSignBase):
     position_records: List[PositionRecordResponse] = []
     issue_records: List[IssueRecordResponse] = []
     review_records: List[ReviewRecordResponse] = []
+    has_active_anomaly: bool = False
+    active_anomaly_count: int = 0
+    active_anomaly_types: List[str] = []
 
     class Config:
         from_attributes = True

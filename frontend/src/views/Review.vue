@@ -39,7 +39,16 @@
         </div>
       </template>
       <el-table :data="reviewList" v-loading="loading" stripe>
-        <el-table-column prop="sign_number" label="引导牌编号" width="140" />
+        <el-table-column label="引导牌编号" width="180">
+          <template #default="{ row }">
+            <div class="sign-number-with-tag">
+              <span>{{ row.sign_number }}</span>
+              <el-tooltip v-if="row.has_active_anomaly" :content="'存在活跃异常：' + (row.active_anomaly_types || []).map(t => getAnomalyTypeLabel(t)).join('、')" placement="top">
+                <el-tag type="danger" size="small" effect="dark" round class="anomaly-tag">异常</el-tag>
+              </el-tooltip>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column prop="batch_code" label="批次编号" width="120" />
         <el-table-column prop="applicable_session" label="适用场次" width="140" />
         <el-table-column prop="current_area" label="摆放区域" width="140" />
@@ -47,6 +56,18 @@
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
             <el-tag type="danger">{{ getStatusLabel(row.status) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="异常提示" width="160">
+          <template #default="{ row }">
+            <span v-if="row.has_active_anomaly" class="anomaly-warning">
+              <el-icon><Warning /></el-icon>
+              {{ (row.active_anomaly_types || []).length }}项未处理
+            </span>
+            <span v-else class="no-anomaly">
+              <el-icon><CircleCheck /></el-icon>
+              正常
+            </span>
           </template>
         </el-table-column>
         <el-table-column prop="remark" label="备注" min-width="150" show-overflow-tooltip />
@@ -93,9 +114,9 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Refresh } from '@element-plus/icons-vue'
+import { Refresh, Warning, CircleCheck } from '@element-plus/icons-vue'
 import request from '@/utils/request'
-import { getStatusLabel } from '@/utils/statusMap'
+import { getStatusLabel, getAnomalyTypeLabel } from '@/utils/statusMap'
 
 const loading = ref(false)
 const submitLoading = ref(false)
@@ -209,4 +230,9 @@ onMounted(() => {
   align-items: center;
   font-weight: 600;
 }
+
+.sign-number-with-tag { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.anomaly-tag { margin-left: 4px; }
+.anomaly-warning { display: inline-flex; align-items: center; gap: 4px; color: #f56c6c; font-size: 13px; font-weight: 500; }
+.no-anomaly { display: inline-flex; align-items: center; gap: 4px; color: #67c23a; font-size: 13px; }
 </style>

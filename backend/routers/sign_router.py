@@ -4,7 +4,7 @@ from sqlalchemy import func
 from typing import List, Optional
 
 from database import get_db
-from models import GuideSign, PositionRecord, IssueRecord, ReviewRecord, User
+from models import GuideSign, PositionRecord, IssueRecord, ReviewRecord, User, Anomaly
 from auth import get_current_user
 from schemas import (
     GuideSignCreate, GuideSignUpdate, GuideSignResponse,
@@ -22,6 +22,19 @@ STATUS_MAP = {
     "restored": "恢复可用",
     "deactivated": "停用"
 }
+
+
+def enrich_sign_with_anomaly(sign: GuideSign, db: Session) -> GuideSign:
+    active_anomalies = db.query(Anomaly).filter(
+        Anomaly.sign_id == sign.id,
+        Anomaly.current_status.in_(["pending", "processing", "pending_confirm"])
+    ).all()
+    
+    sign.has_active_anomaly = len(active_anomalies) > 0
+    sign.active_anomaly_count = len(active_anomalies)
+    sign.active_anomaly_types = [a.anomaly_type for a in active_anomalies]
+    
+    return sign
 
 
 @router.get("", response_model=List[GuideSignResponse])
@@ -53,6 +66,8 @@ def list_signs(
         )
     
     signs = query.order_by(GuideSign.id.desc()).offset(skip).limit(limit).all()
+    for sign in signs:
+        enrich_sign_with_anomaly(sign, db)
     return signs
 
 
@@ -65,6 +80,7 @@ def get_sign(
     sign = db.query(GuideSign).filter(GuideSign.id == sign_id).first()
     if not sign:
         raise HTTPException(status_code=404, detail="引导牌不存在")
+    enrich_sign_with_anomaly(sign, db)
     return sign
 
 

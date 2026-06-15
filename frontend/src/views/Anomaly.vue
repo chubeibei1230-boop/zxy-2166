@@ -41,9 +41,32 @@
       <template #header>
         <div class="card-header">
           <span>异常记录列表</span>
-          <div>
-            <el-tag type="danger" size="small" style="margin-right: 8px">待处理：{{ pendingCount }}</el-tag>
-            <el-tag type="warning" size="small" style="margin-right: 8px">处理中：{{ processingCount }}</el-tag>
+          <div class="header-tags">
+            <el-tooltip content="全局统计" placement="top">
+              <el-tag type="info" size="small" style="margin-right: 8px">
+                总数：{{ globalStats.total || 0 }}
+              </el-tag>
+            </el-tooltip>
+            <el-tooltip content="全局统计" placement="top">
+              <el-tag type="danger" size="small" style="margin-right: 8px">
+                待处理：{{ globalStats.pending || 0 }}
+              </el-tag>
+            </el-tooltip>
+            <el-tooltip content="全局统计" placement="top">
+              <el-tag type="warning" size="small" style="margin-right: 8px">
+                处理中：{{ globalStats.processing || 0 }}
+              </el-tag>
+            </el-tooltip>
+            <el-tooltip content="全局统计" placement="top">
+              <el-tag type="primary" size="small" style="margin-right: 8px">
+                待确认：{{ globalStats.pending_confirm || 0 }}
+              </el-tag>
+            </el-tooltip>
+            <el-tooltip content="全局统计" placement="top">
+              <el-tag type="success" size="small" style="margin-right: 8px">
+                已关闭：{{ globalStats.closed || 0 }}
+              </el-tag>
+            </el-tooltip>
             <el-button type="primary" size="small" @click="openRegisterDialog">
               <el-icon><Plus /></el-icon>登记异常
             </el-button>
@@ -93,8 +116,8 @@
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="viewDetail(row)">详情</el-button>
-            <el-button link type="primary" size="small" @click="openProcessDialog(row)" v-if="row.current_status !== 'closed'">
-              处理
+            <el-button link type="primary" size="small" @click="openProcessDialog(row)">
+              {{ row.current_status === 'closed' ? '重新打开' : '处理' }}
             </el-button>
           </template>
         </el-table-column>
@@ -251,8 +274,8 @@
       </div>
       <template #footer>
         <el-button @click="detailDrawerVisible = false">关闭</el-button>
-        <el-button type="primary" @click="handleDetailProcess" v-if="currentAnomaly && currentAnomaly.current_status !== 'closed'">
-          处理异常
+        <el-button type="primary" @click="handleDetailProcess" v-if="currentAnomaly">
+          {{ currentAnomaly.current_status === 'closed' ? '重新打开' : '处理异常' }}
         </el-button>
       </template>
     </el-drawer>
@@ -282,6 +305,7 @@ const detailLoading = ref(false)
 const anomalyList = ref([])
 const availableSigns = ref([])
 const flowRecords = ref([])
+const globalStats = ref({})
 
 const filterForm = reactive({
   current_status: '',
@@ -292,6 +316,16 @@ const filterForm = reactive({
   keyword: ''
 })
 
+const pendingAnomalyId = ref(null)
+
+async function fetchGlobalStats() {
+  try {
+    globalStats.value = await request.get('/anomalies/stats/summary')
+  } catch (e) {
+    console.error(e)
+  }
+}
+
 function initFilterFromQuery() {
   const query = route.query
   if (query.current_status) {
@@ -299,6 +333,23 @@ function initFilterFromQuery() {
   }
   if (query.anomaly_type) {
     filterForm.anomaly_type = query.anomaly_type
+  }
+  if (query.anomaly_id) {
+    pendingAnomalyId.value = parseInt(query.anomaly_id)
+  }
+}
+
+async function openAnomalyById(id) {
+  try {
+    const [anomaly, flows] = await Promise.all([
+      request.get(`/anomalies/${id}`),
+      request.get(`/anomalies/${id}/flows`)
+    ])
+    currentAnomaly.value = anomaly
+    flowRecords.value = flows
+    detailDrawerVisible.value = true
+  } catch (e) {
+    ElMessage.error('异常记录不存在')
   }
 }
 
@@ -461,7 +512,7 @@ async function handleRegister() {
     await request.post('/anomalies', data)
     ElMessage.success('异常登记成功')
     registerDialogVisible.value = false
-    fetchList()
+    Promise.all([fetchList(), fetchGlobalStats()])
   } catch (e) {
     if (e?.message) ElMessage.error(e.message)
   } finally {
@@ -490,7 +541,7 @@ async function handleProcess() {
     
     ElMessage.success('操作成功')
     processDialogVisible.value = false
-    fetchList()
+    Promise.all([fetchList(), fetchGlobalStats()])
     if (detailDrawerVisible.value) {
       fetchDetail(currentAnomaly.value.id)
     }
@@ -528,9 +579,16 @@ function handleDetailProcess() {
   openProcessDialog(currentAnomaly.value)
 }
 
-onMounted(() => {
+async function initPage() {
   initFilterFromQuery()
-  fetchList()
+  await Promise.all([fetchList(), fetchGlobalStats()])
+  if (pendingAnomalyId.value) {
+    await openAnomalyById(pendingAnomalyId.value)
+  }
+}
+
+onMounted(() => {
+  initPage()
 })
 </script>
 
