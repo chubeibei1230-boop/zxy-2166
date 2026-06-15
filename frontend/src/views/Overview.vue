@@ -1,0 +1,480 @@
+<template>
+  <div class="overview-page">
+    <el-row :gutter="16" class="stats-row">
+      <el-col :span="3">
+        <div class="stat-card total">
+          <div class="stat-icon">
+            <el-icon :size="28"><Tickets /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-label">总引导牌</div>
+            <div class="stat-value">{{ stats.total_signs || 0 }}</div>
+          </div>
+        </div>
+      </el-col>
+      <el-col :span="3">
+        <div class="stat-card pending">
+          <div class="stat-icon">
+            <el-icon :size="28"><Clock /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-label">待制作</div>
+            <div class="stat-value">{{ stats.pending_production || 0 }}</div>
+          </div>
+        </div>
+      </el-col>
+      <el-col :span="3">
+        <div class="stat-card available">
+          <div class="stat-icon">
+            <el-icon :size="28"><CircleCheck /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-label">可发放</div>
+            <div class="stat-value">{{ stats.available || 0 }}</div>
+          </div>
+        </div>
+      </el-col>
+      <el-col :span="3">
+        <div class="stat-card issued">
+          <div class="stat-icon">
+            <el-icon :size="28"><Promotion /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-label">已发放</div>
+            <div class="stat-value">{{ stats.issued || 0 }}</div>
+          </div>
+        </div>
+      </el-col>
+      <el-col :span="3">
+        <div class="stat-card recycle">
+          <div class="stat-icon">
+            <el-icon :size="28"><Refresh /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-label">待回收</div>
+            <div class="stat-value">{{ stats.pending_recycle || 0 }}</div>
+          </div>
+        </div>
+      </el-col>
+      <el-col :span="3">
+        <div class="stat-card review">
+          <div class="stat-icon">
+            <el-icon :size="28"><Warning /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-label">待复核</div>
+            <div class="stat-value">{{ stats.pending_review || 0 }}</div>
+          </div>
+        </div>
+      </el-col>
+      <el-col :span="3">
+        <div class="stat-card restored">
+          <div class="stat-icon">
+            <el-icon :size="28"><CircleCheck /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-label">恢复可用</div>
+            <div class="stat-value">{{ stats.restored || 0 }}</div>
+          </div>
+        </div>
+      </el-col>
+      <el-col :span="3">
+        <div class="stat-card deactivated">
+          <div class="stat-icon">
+            <el-icon :size="28"><Close /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-label">已停用</div>
+            <div class="stat-value">{{ stats.deactivated || 0 }}</div>
+          </div>
+        </div>
+      </el-col>
+    </el-row>
+
+    <el-row :gutter="16" class="charts-row">
+      <el-col :span="12">
+        <el-card class="chart-card">
+          <template #header>
+            <div class="card-title">
+              <span>场次使用量</span>
+            </div>
+          </template>
+          <div ref="sessionChartRef" class="chart-container"></div>
+        </el-card>
+      </el-col>
+      <el-col :span="12">
+        <el-card class="chart-card">
+          <template #header>
+            <div class="card-title">
+              <span>区域调整排行</span>
+            </div>
+          </template>
+          <div ref="areaChartRef" class="chart-container"></div>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <el-row :gutter="16" class="charts-row">
+      <el-col :span="12">
+        <el-card class="chart-card">
+          <template #header>
+            <div class="card-title">
+              <span>责任人处理量</span>
+            </div>
+          </template>
+          <div ref="personChartRef" class="chart-container"></div>
+        </el-card>
+      </el-col>
+      <el-col :span="12">
+        <el-card class="chart-card">
+          <template #header>
+            <div class="card-title">
+              <span>待复核清单</span>
+              <el-tag type="danger" size="small">{{ (stats.pending_review_list || []).length }} 项</el-tag>
+            </div>
+          </template>
+          <div class="pending-review-list">
+            <el-table :data="stats.pending_review_list || []" size="small" v-loading="loading">
+              <el-table-column prop="sign_number" label="引导牌编号" width="120" />
+              <el-table-column prop="applicable_session" label="适用场次" width="140" />
+              <el-table-column prop="current_area" label="摆放区域" width="140" />
+              <el-table-column prop="responsible_person" label="责任人" width="100" />
+              <el-table-column label="操作" width="80">
+                <template #default="{ row }">
+                  <el-button link type="primary" size="small" @click="goToReview">去复核</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
+import * as echarts from 'echarts'
+import { 
+  Tickets, Clock, CircleCheck, Promotion, Refresh, Warning, Close 
+} from '@element-plus/icons-vue'
+import request from '@/utils/request'
+
+const router = useRouter()
+const loading = ref(false)
+const stats = ref({})
+
+const sessionChartRef = ref(null)
+const areaChartRef = ref(null)
+const personChartRef = ref(null)
+
+let sessionChart = null
+let areaChart = null
+let personChart = null
+
+async function fetchData() {
+  loading.value = true
+  try {
+    stats.value = await request.get('/stats/overview')
+    await nextTick()
+    renderCharts()
+  } catch (e) {
+    console.error(e)
+  } finally {
+    loading.value = false
+  }
+}
+
+function renderCharts() {
+  renderSessionChart()
+  renderAreaChart()
+  renderPersonChart()
+}
+
+function renderSessionChart() {
+  if (!sessionChartRef.value) return
+  
+  if (sessionChart) {
+    sessionChart.dispose()
+  }
+  
+  sessionChart = echarts.init(sessionChartRef.value)
+  
+  const data = stats.value.session_usage || []
+  const option = {
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' }
+    },
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '3%',
+      containLabel: true
+    },
+    xAxis: {
+      type: 'category',
+      data: data.map(d => d.session),
+      axisLabel: {
+        rotate: 30,
+        interval: 0
+      }
+    },
+    yAxis: {
+      type: 'value',
+      minInterval: 1
+    },
+    series: [{
+      name: '使用量',
+      type: 'bar',
+      data: data.map(d => d.count),
+      itemStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: '#667eea' },
+          { offset: 1, color: '#764ba2' }
+        ]),
+        borderRadius: [4, 4, 0, 0]
+      },
+      barWidth: '50%'
+    }]
+  }
+  
+  sessionChart.setOption(option)
+}
+
+function renderAreaChart() {
+  if (!areaChartRef.value) return
+  
+  if (areaChart) {
+    areaChart.dispose()
+  }
+  
+  areaChart = echarts.init(areaChartRef.value)
+  
+  const data = stats.value.area_conflicts || []
+  const option = {
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' }
+    },
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '3%',
+      containLabel: true
+    },
+    xAxis: {
+      type: 'value',
+      minInterval: 1
+    },
+    yAxis: {
+      type: 'category',
+      data: data.map(d => d.area).reverse()
+    },
+    series: [{
+      name: '调整次数',
+      type: 'bar',
+      data: data.map(d => d.conflict_count).reverse(),
+      itemStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+          { offset: 0, color: '#f093fb' },
+          { offset: 1, color: '#f5576c' }
+        ]),
+        borderRadius: [0, 4, 4, 0]
+      },
+      barWidth: '60%'
+    }]
+  }
+  
+  areaChart.setOption(option)
+}
+
+function renderPersonChart() {
+  if (!personChartRef.value) return
+  
+  if (personChart) {
+    personChart.dispose()
+  }
+  
+  personChart = echarts.init(personChartRef.value)
+  
+  const data = stats.value.person_workload || []
+  const option = {
+    tooltip: {
+      trigger: 'item'
+    },
+    legend: {
+      orient: 'vertical',
+      right: '5%',
+      top: 'center'
+    },
+    series: [{
+      name: '处理量',
+      type: 'pie',
+      radius: ['40%', '70%'],
+      center: ['35%', '50%'],
+      avoidLabelOverlap: false,
+      itemStyle: {
+        borderRadius: 6,
+        borderColor: '#fff',
+        borderWidth: 2
+      },
+      label: {
+        show: false,
+        position: 'center'
+      },
+      emphasis: {
+        label: {
+          show: true,
+          fontSize: 18,
+          fontWeight: 'bold'
+        }
+      },
+      labelLine: {
+        show: false
+      },
+      data: data.map((d, i) => ({
+        value: d.count,
+        name: d.person,
+        itemStyle: {
+          color: [
+            '#667eea', '#f093fb', '#4facfe',
+            '#43e97b', '#fa709a', '#fee140'
+          ][i % 6]
+        }
+      }))
+    }]
+  }
+  
+  personChart.setOption(option)
+}
+
+function goToReview() {
+  router.push('/review')
+}
+
+function handleResize() {
+  sessionChart?.resize()
+  areaChart?.resize()
+  personChart?.resize()
+}
+
+onMounted(() => {
+  fetchData()
+  window.addEventListener('resize', handleResize)
+})
+
+onBeforeUnmount(() => {
+  sessionChart?.dispose()
+  areaChart?.dispose()
+  personChart?.dispose()
+  window.removeEventListener('resize', handleResize)
+})
+</script>
+
+<style scoped>
+.overview-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.stats-row {
+  margin-bottom: 0;
+}
+
+.stat-card {
+  background: white;
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.stat-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+}
+
+.stat-card.total .stat-icon {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+}
+
+.stat-card.pending .stat-icon {
+  background: linear-gradient(135deg, #f6d365, #fda085);
+}
+
+.stat-card.available .stat-icon {
+  background: linear-gradient(135deg, #43e97b, #38f9d7);
+}
+
+.stat-card.issued .stat-icon {
+  background: linear-gradient(135deg, #fa709a, #fee140);
+}
+
+.stat-card.recycle .stat-icon {
+  background: linear-gradient(135deg, #30cfd0, #330867);
+}
+
+.stat-card.review .stat-icon {
+  background: linear-gradient(135deg, #ff0844, #ffb199);
+}
+
+.stat-card.restored .stat-icon {
+  background: linear-gradient(135deg, #a8edea, #fed6e3);
+  color: #67c23a;
+}
+
+.stat-card.deactivated .stat-icon {
+  background: linear-gradient(135deg, #bdc3c7, #2c3e50);
+}
+
+.stat-info {
+  flex: 1;
+}
+
+.stat-label {
+  color: #909399;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.charts-row {
+  margin-bottom: 0;
+}
+
+.chart-card {
+  height: 100%;
+}
+
+.card-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+}
+
+.chart-container {
+  width: 100%;
+  height: 300px;
+}
+
+.pending-review-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+</style>

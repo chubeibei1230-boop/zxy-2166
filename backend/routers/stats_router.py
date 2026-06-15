@@ -1,0 +1,76 @@
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+from sqlalchemy import func
+from typing import List
+
+from database import get_db
+from models import GuideSign, PositionRecord, IssueRecord, User
+from auth import get_current_user
+from schemas import OverviewStats, SessionUsageItem, AreaConflictItem, PersonWorkloadItem
+
+router = APIRouter(prefix="/api/stats", tags=["统计"])
+
+
+@router.get("/overview", response_model=OverviewStats)
+def get_overview_stats(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    total_signs = db.query(GuideSign).count()
+    
+    pending_production = db.query(GuideSign).filter(GuideSign.status == "pending_production").count()
+    available = db.query(GuideSign).filter(GuideSign.status == "available").count()
+    issued = db.query(GuideSign).filter(GuideSign.status == "issued").count()
+    pending_recycle = db.query(GuideSign).filter(GuideSign.status == "pending_recycle").count()
+    pending_review = db.query(GuideSign).filter(GuideSign.status == "pending_review").count()
+    restored = db.query(GuideSign).filter(GuideSign.status == "restored").count()
+    deactivated = db.query(GuideSign).filter(GuideSign.status == "deactivated").count()
+    
+    session_usage_query = db.query(
+        GuideSign.applicable_session,
+        func.count(GuideSign.id).label('count')
+    ).group_by(GuideSign.applicable_session).order_by(func.count(GuideSign.id).desc()).limit(10).all()
+    
+    session_usage = [
+        SessionUsageItem(session=row.applicable_session, count=row.count)
+        for row in session_usage_query
+    ]
+    
+    area_conflicts_query = db.query(
+        PositionRecord.to_area.label('area'),
+        func.count(PositionRecord.id).label('conflict_count')
+    ).group_by(PositionRecord.to_area).order_by(func.count(PositionRecord.id).desc()).limit(10).all()
+    
+    area_conflicts = [
+        AreaConflictItem(area=row.area, conflict_count=row.conflict_count)
+        for row in area_conflicts_query
+    ]
+    
+    person_workload_query = db.query(
+        IssueRecord.operator.label('person'),
+        func.count(IssueRecord.id).label('count')
+    ).group_by(IssueRecord.operator).order_by(func.count(IssueRecord.id).desc()).limit(10).all()
+    
+    person_workload = [
+        PersonWorkloadItem(person=row.person, count=row.count)
+        for row in person_workload_query
+    ]
+    
+    pending_review_list = db.query(GuideSign).filter(
+        GuideSign.status == "pending_review"
+    ).order_by(GuideSign.updated_at.desc()).all()
+    
+    return OverviewStats(
+        total_signs=total_signs,
+        pending_production=pending_production,
+        available=available,
+        issued=issued,
+        pending_recycle=pending_recycle,
+        pending_review=pending_review,
+        restored=restored,
+        deactivated=deactivated,
+        session_usage=session_usage,
+        area_conflicts=area_conflicts,
+        person_workload=person_workload,
+        pending_review_list=pending_review_list
+    )
